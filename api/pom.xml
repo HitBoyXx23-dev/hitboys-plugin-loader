@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.hitboy</groupId>
+        <artifactId>hitboys-plugin-loader-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <!-- The HitBoy plugin API. Plugins compile against this JAR; both loaders ship it. -->
+    <artifactId>hitboys-plugin-api</artifactId>
+    <name>HitBoy Plugin API</name>
+
+    <properties>
+        <maven.compiler.release>8</maven.compiler.release>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>${gson.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>hitboys-plugin-api</finalName>
+    </build>
+</project>

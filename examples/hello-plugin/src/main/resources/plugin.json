@@ -1,0 +1,7 @@
+{
+  "name": "HelloPlugin",
+  "version": "1.0.0",
+  "main": "com.hitboy.example.HelloPlugin",
+  "description": "Example HitBoy plugin: greets players on join and adds /hbhello.",
+  "author": "HitBoy"
+}
