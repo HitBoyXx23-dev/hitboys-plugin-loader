@@ -2,6 +2,9 @@ package com.hitboy.pluginloader.server;
 
 import com.hitboy.pluginloader.api.PluginEventBus;
 import com.hitboy.pluginloader.api.events.BlockBreakEvent;
+import com.hitboy.pluginloader.api.events.BlockPlaceEvent;
+import com.hitboy.pluginloader.api.events.PlayerDeathEvent;
+import com.hitboy.pluginloader.core.TickScheduler;
 import com.hitboy.pluginloader.api.events.PlayerChatEvent;
 import com.hitboy.pluginloader.api.events.PlayerJoinEvent;
 import com.hitboy.pluginloader.api.events.PlayerQuitEvent;
@@ -29,21 +32,24 @@ public final class HitBoyServerHooks {
     private static VanillaBridge bridge;
     private static PluginEventBus events;
     private static PluginManager plugins;
+    private static TickScheduler scheduler;
     private static boolean stopped;
     private static Object startingServer;
 
     private HitBoyServerHooks() {
     }
 
-    /** A join or quit whose vanilla system message has not been broadcast yet. */
+    private enum Kind { JOIN, QUIT, DEATH }
+
+    /** A join, quit, or death whose vanilla system message has not been broadcast yet. */
     private static final class Pending {
         final Object player;
-        final boolean join;
+        final Kind kind;
         boolean fired;
 
-        Pending(Object player, boolean join) {
+        Pending(Object player, Kind kind) {
             this.player = player;
-            this.join = join;
+            this.kind = kind;
         }
     }
 
@@ -58,9 +64,15 @@ public final class HitBoyServerHooks {
             bridge = new VanillaBridge(ServerRuntime.mappings(), server);
             events = new PluginEventBus();
             File pluginsDirectory = new File("hitboy-plugins");
-            plugins = new PluginManager(LOGGER, pluginsDirectory, pluginsDirectory, events, bridge.commands(), bridge);
+            scheduler = new TickScheduler(LOGGER);
+            plugins = new PluginManager(LOGGER, pluginsDirectory, pluginsDirectory, events, bridge.commands(), bridge, scheduler);
             bridge.commands().registerBuiltIn(plugins);
             plugins.loadAll();
+            try {
+                bridge.failResult();
+            } catch (Throwable unavailable) {
+                LOGGER.warning("Plugins cannot cancel block placement on this Minecraft version: " + unavailable.getMessage());
+            }
             List<String> missing = ServerRuntime.transformer().missingHooks();
             if (!missing.isEmpty()) {
                 LOGGER.warning("Some HitBoy hooks did not apply on Minecraft " + ServerRuntime.mappings().version() + ": " + missing);
@@ -91,7 +103,7 @@ public final class HitBoyServerHooks {
     }
 
     public static void beginJoin(Object player) {
-        PENDING.set(new Pending(player, true));
+        PENDING.set(new Pending(player, Kind.JOIN));
     }
 
     public static void endJoin() {
@@ -102,7 +114,7 @@ public final class HitBoyServerHooks {
 
     public static void beginQuit(Object listener) {
         try {
-            if (bridge != null) PENDING.set(new Pending(bridge.playerOf(listener), false));
+            if (bridge != null) PENDING.set(new Pending(bridge.playerOf(listener), Kind.QUIT));
         } catch (Throwable failure) {
             report("track quit", failure);
         }
@@ -110,6 +122,43 @@ public final class HitBoyServerHooks {
 
     public static void endQuit() {
         endJoin();
+    }
+
+    public static void beginDeath(Object player) {
+        if (bridge != null) PENDING.set(new Pending(player, Kind.DEATH));
+    }
+
+    public static void endDeath() {
+        endJoin();
+    }
+
+    /** Called at the start of every server tick: runs scheduled plugin tasks. */
+    public static void tick() {
+        TickScheduler current = scheduler;
+        if (current == null || stopped) return;
+        try {
+            current.tick();
+        } catch (Throwable failure) {
+            report("run scheduled tasks", failure);
+        }
+    }
+
+    /** Returns InteractionResult.FAIL when a plugin cancelled the placement, else null (place normally). */
+    public static Object blockPlace(Object blockItem, Object context) {
+        if (bridge == null) return null;
+        try {
+            Object player = bridge.contextPlayer(context);
+            if (player == null) return null; // dispensers and other non-player placements
+            Object level = bridge.contextLevel(context);
+            int[] xyz = bridge.coordinates(bridge.contextPosition(context));
+            BlockPlaceEvent event = new BlockPlaceEvent(bridge.playerName(player), bridge.playerId(player),
+                bridge.worldName(level), xyz[0], xyz[1], xyz[2], bridge.blockOfItem(blockItem));
+            events.publish(event);
+            return event.isCancelled() ? bridge.failResult() : null;
+        } catch (Throwable failure) {
+            report("handle block place", failure);
+            return null;
+        }
     }
 
     /** Called for every system broadcast; returns the component to send, or null to send nothing. */
@@ -169,10 +218,15 @@ public final class HitBoyServerHooks {
         if (bridge == null || pending.player == null) return message;
         String name = bridge.playerName(pending.player);
         UUID id = bridge.playerId(pending.player);
-        if (pending.join) {
+        if (pending.kind == Kind.JOIN) {
             PlayerJoinEvent event = new PlayerJoinEvent(name, id, message);
             events.publish(event);
             return event.joinMessage();
+        }
+        if (pending.kind == Kind.DEATH) {
+            PlayerDeathEvent event = new PlayerDeathEvent(name, id, message);
+            events.publish(event);
+            return event.deathMessage();
         }
         PlayerQuitEvent event = new PlayerQuitEvent(name, id, message);
         events.publish(event);

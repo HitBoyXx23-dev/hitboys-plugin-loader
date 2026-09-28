@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.hitboy</groupId>
         <artifactId>hitboys-plugin-loader-parent</artifactId>
-        <version>1.0.0</version>
+        <version>1.1.0</version>
     </parent>
 
     <!-- Runs Mojang's vanilla server.jar with HitBoy plugins. No Bukkit, Spigot, Paper, or Purpur. -->

@@ -35,6 +35,7 @@ public final class PluginManager {
     private final PluginEventBus eventBus;
     private final CommandRegistry commandRegistry;
     private final ServerAccess server;
+    private final TickScheduler scheduler;
     private final List<LoadedPlugin> loadedPlugins = new ArrayList<>();
 
     public PluginManager(
@@ -45,12 +46,25 @@ public final class PluginManager {
         CommandRegistry commandRegistry,
         ServerAccess server
     ) {
+        this(logger, pluginsDirectory, dataRoot, eventBus, commandRegistry, server, null);
+    }
+
+    public PluginManager(
+        Logger logger,
+        File pluginsDirectory,
+        File dataRoot,
+        PluginEventBus eventBus,
+        CommandRegistry commandRegistry,
+        ServerAccess server,
+        TickScheduler scheduler
+    ) {
         this.logger = logger;
         this.pluginsDirectory = pluginsDirectory;
         this.dataRoot = dataRoot;
         this.eventBus = eventBus;
         this.commandRegistry = commandRegistry;
         this.server = server;
+        this.scheduler = scheduler;
     }
 
     /** Scans {@code pluginsDirectory} for jars and enables everything found. */
@@ -112,7 +126,8 @@ public final class PluginManager {
             pluginLogger,
             eventBus,
             commandRegistry,
-            server
+            server,
+            scheduler == null ? null : scheduler.forOwner(instance)
         );
 
         instance.onEnable(context);
@@ -125,6 +140,7 @@ public final class PluginManager {
     public void disableAll() {
         for (int i = loadedPlugins.size() - 1; i >= 0; i--) {
             LoadedPlugin loaded = loadedPlugins.get(i);
+            if (scheduler != null) scheduler.cancelAll(loaded.instance());
             try {
                 loaded.instance().onDisable();
             } catch (RuntimeException e) {

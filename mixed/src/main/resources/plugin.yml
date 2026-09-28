@@ -1,6 +1,6 @@
 name: HitBoysMixedPluginLoader
 main: com.hitboy.pluginloader.HitBoysMixedPluginLoader
-version: 1.0.0
+version: 1.1.0
 author: HitBoy
 description: >
   Runs HitBoy plugins (plugin.json + HitBoyPlugin API) alongside the Bukkit,
@@ -10,3 +10,4 @@ commands:
     description: Lists or reloads HitBoy plugins.
     usage: /<command> [reload]
     aliases: [hbp]
+api-version: '1.13'

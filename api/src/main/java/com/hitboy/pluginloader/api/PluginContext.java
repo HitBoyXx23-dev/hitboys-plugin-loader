@@ -17,6 +17,7 @@ public final class PluginContext {
     private final PluginEventBus eventBus;
     private final CommandRegistry commandRegistry;
     private final ServerAccess server;
+    private final Scheduler scheduler;
 
     public PluginContext(
         String pluginName,
@@ -27,6 +28,19 @@ public final class PluginContext {
         CommandRegistry commandRegistry,
         ServerAccess server
     ) {
+        this(pluginName, pluginVersion, dataFolder, logger, eventBus, commandRegistry, server, null);
+    }
+
+    public PluginContext(
+        String pluginName,
+        String pluginVersion,
+        File dataFolder,
+        Logger logger,
+        PluginEventBus eventBus,
+        CommandRegistry commandRegistry,
+        ServerAccess server,
+        Scheduler scheduler
+    ) {
         this.pluginName = pluginName;
         this.pluginVersion = pluginVersion;
         this.dataFolder = dataFolder;
@@ -34,6 +48,7 @@ public final class PluginContext {
         this.eventBus = eventBus;
         this.commandRegistry = commandRegistry;
         this.server = server;
+        this.scheduler = scheduler;
     }
 
     public String pluginName() {
@@ -66,8 +81,14 @@ public final class PluginContext {
         return commandRegistry;
     }
 
-    /** Server actions such as broadcasting a message. */
+    /** Server actions: broadcasting, online players, running console commands. */
     public ServerAccess server() {
         return server;
+    }
+
+    /** Runs code later or repeatedly on the server thread; tasks stop when the plugin is disabled. */
+    public Scheduler scheduler() {
+        if (scheduler == null) throw new IllegalStateException("This loader does not provide a scheduler");
+        return scheduler;
     }
 }

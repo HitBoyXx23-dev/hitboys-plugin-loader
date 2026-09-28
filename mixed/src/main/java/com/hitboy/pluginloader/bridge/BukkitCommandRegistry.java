@@ -1,5 +1,6 @@
 package com.hitboy.pluginloader.bridge;
 
+import com.hitboy.pluginloader.api.CommandExecutor;
 import com.hitboy.pluginloader.api.CommandHandler;
 import com.hitboy.pluginloader.api.CommandRegistry;
 
@@ -47,7 +48,17 @@ public final class BukkitCommandRegistry implements CommandRegistry {
     }
 
     @Override
-    public void register(String name, String description, CommandHandler handler) {
+    public void register(String name, String description, final CommandHandler handler) {
+        registerCommand(name, description, new CommandExecutor() {
+            @Override
+            public boolean execute(com.hitboy.pluginloader.api.CommandSender sender, String[] args) {
+                return handler.execute(sender.name(), args);
+            }
+        });
+    }
+
+    @Override
+    public void registerCommand(final String name, String description, final CommandExecutor executor) {
         if (commandMap == null) {
             logger.warning("Cannot register command /" + name + " -- CommandMap unavailable.");
             return;
@@ -56,7 +67,7 @@ public final class BukkitCommandRegistry implements CommandRegistry {
             @Override
             public boolean execute(CommandSender sender, String label, String[] args) {
                 try {
-                    if (!handler.execute(sender.getName(), args)) {
+                    if (!executor.execute(new Sender(sender), args)) {
                         sender.sendMessage("Usage: " + getUsage());
                     }
                 } catch (RuntimeException e) {
@@ -67,5 +78,53 @@ public final class BukkitCommandRegistry implements CommandRegistry {
             }
         };
         commandMap.register(ownerPlugin.getName().toLowerCase(), command);
+    }
+
+    /** A Bukkit command sender as a HitBoy {@link com.hitboy.pluginloader.api.CommandSender}. */
+    private static final class Sender implements com.hitboy.pluginloader.api.CommandSender {
+        private final CommandSender sender;
+
+        Sender(CommandSender sender) {
+            this.sender = callee(sender);
+        }
+
+        /**
+         * "/execute as <player> run ..." reaches Bukkit commands as a ProxiedCommandSender; like vanilla, the
+         * command runs as the callee (the player). Read by reflection: the class is missing on very old servers.
+         */
+        private static CommandSender callee(CommandSender sender) {
+            try {
+                Class<?> proxied = Class.forName("org.bukkit.command.ProxiedCommandSender");
+                if (proxied.isInstance(sender)) return (CommandSender) proxied.getMethod("getCallee").invoke(sender);
+            } catch (ReflectiveOperationException | RuntimeException notAvailable) {
+                // older Bukkit: no proxied senders
+            }
+            return sender;
+        }
+
+        @Override
+        public String name() {
+            return sender.getName();
+        }
+
+        @Override
+        public void sendMessage(String message) {
+            sender.sendMessage(message);
+        }
+
+        @Override
+        public boolean isPlayer() {
+            return sender instanceof org.bukkit.entity.Player;
+        }
+
+        @Override
+        public boolean isOp() {
+            return sender.isOp();
+        }
+
+        @Override
+        public com.hitboy.pluginloader.api.PlayerHandle player() {
+            return sender instanceof org.bukkit.entity.Player ? new BukkitPlayer((org.bukkit.entity.Player) sender) : null;
+        }
     }
 }

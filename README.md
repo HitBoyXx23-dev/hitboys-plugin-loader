@@ -86,18 +86,41 @@ public final class HelloPlugin implements HitBoyPlugin {
         context.events().subscribe(PlayerJoinEvent.class, event ->
             event.setJoinMessage("Welcome, " + event.playerName() + "!"));
 
-        context.commands().register("hbhello", "Says hello.", (sender, args) -> {
-            context.server().broadcast("Hello, " + sender + "!");
+        // The sender can be answered directly, and tells you who ran the command.
+        context.commands().registerCommand("hbhello", "Says hello.", (sender, args) -> {
+            sender.sendMessage("Hello, " + sender.name() + "!");
+            PlayerHandle player = sender.player(); // null for the console
+            if (player != null) sender.sendMessage("You are at " + player.x() + " " + player.y() + " " + player.z());
             return true;
         });
+
+        // 20 ticks = 1 second; tasks stop when the plugin is disabled.
+        context.scheduler().runRepeating(() ->
+            context.server().broadcast(context.server().onlinePlayers().size() + " player(s) online"), 0, 20 * 60);
     }
 }
 ```
 
-`PluginContext` provides a logger, a data folder, the event bus, the command
-registry, and `server().broadcast(...)`. Events: `PlayerJoinEvent`,
-`PlayerQuitEvent`, `PlayerChatEvent` (cancel or change the message), and
-`BlockBreakEvent` (cancellable). See `examples/hello-plugin`.
+### API
+
+| Part | What it offers |
+|---|---|
+| `context.events()` | Subscribe to events (below). |
+| `context.commands()` | `registerCommand(name, description, (sender, args) -> ...)`. The `CommandSender` has `name()`, `sendMessage()`, `isPlayer()`, `isOp()`, and `player()`. (The older `register(...)`, which only gets the sender's name, still works.) |
+| `context.server()` | `broadcast()`, `onlinePlayers()`, `player(name)`, and `runCommand("time set day")` (as the console). |
+| `PlayerHandle` | `name()`, `id()`, `sendMessage()`, `worldName()`, `x()`/`y()`/`z()`, `isOp()`, `kick(reason)`. |
+| `context.scheduler()` | `runLater(task, ticks)` and `runRepeating(task, delay, period)`, on the server thread; both return a `ScheduledTask` you can `cancel()`. |
+| `context.dataFolder()`, `context.logger()` | A per-plugin folder and logger. |
+
+| Event | Can change |
+|---|---|
+| `PlayerJoinEvent`, `PlayerQuitEvent` | The join/quit message (null for none). |
+| `PlayerChatEvent` | Cancel, or change the message. |
+| `PlayerDeathEvent` | The death message (null for none). |
+| `BlockBreakEvent`, `BlockPlaceEvent` | Cancel. |
+
+Call server and player methods from the server thread: inside events, commands,
+and scheduled tasks. See `examples/hello-plugin`, which uses all of it.
 
 ## Building
 
@@ -119,8 +142,20 @@ Outputs:
 - The standalone loader cannot run Bukkit plugins. Vanilla has no Bukkit API;
   use the mixed loader on Spigot, Paper, or Purpur for that.
 - No plugin dependency ordering or permission nodes yet.
-- Chat and block-break events were confirmed to patch cleanly, but in testing
-  only join, quit, and commands were exercised by a real client.
+- Block names differ by loader: `minecraft:stone` on the standalone loader and
+  `STONE` on Bukkit; world names are dimension ids (`minecraft:overworld`) on the
+  standalone loader and world folder names (`world`) on Bukkit.
+- On Paper, a HitBoy command run through `/execute as <player>` from the console
+  reaches the plugin as the console, as it does for every Bukkit plugin.
+
+## Tested (v1.1.0)
+
+With the example plugin, on vanilla **26.3** and **1.21.11** (standalone) and
+**Paper 26.3** and **Paper 1.21.11** (mixed): scheduled and repeating tasks,
+console commands, command replies, the online player list, and on 1.21.11 with a
+real client joining: join messages, `/hbwho` (world and position), replies to a
+player-run command, the death event, and kicking. Block placement is hooked on
+every version but was not triggered by a real player in testing.
 
 ## License
 

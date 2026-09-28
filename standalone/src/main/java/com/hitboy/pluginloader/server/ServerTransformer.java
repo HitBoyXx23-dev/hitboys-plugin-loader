@@ -41,7 +41,9 @@ final class ServerTransformer implements ClassFileTransformer {
         /** At entry, return early (void, or {@code false}) when the hook returns true. */
         CANCEL,
         /** At entry, replace argument 1 with the hook's result, or return early when it is null. */
-        REPLACE_FIRST_ARGUMENT
+        REPLACE_FIRST_ARGUMENT,
+        /** At entry, return the hook's result when it is not null (object-returning methods). */
+        RETURN_IF_NOT_NULL
     }
 
     private static final class Hook {
@@ -97,6 +99,15 @@ final class ServerTransformer implements ClassFileTransformer {
             "(Lnet/minecraft/network/chat/PlayerChatMessage;)V", Kind.CANCEL, "chat", true, 0, 1));
         hooks.add(new Hook("net.minecraft.server.level.ServerPlayerGameMode", "destroyBlock",
             "(Lnet/minecraft/core/BlockPos;)Z", Kind.CANCEL, "blockBreak", true, 0, 1));
+        hooks.add(new Hook("net.minecraft.world.item.BlockItem", "place",
+            "(Lnet/minecraft/world/item/context/BlockPlaceContext;)Lnet/minecraft/world/InteractionResult;",
+            Kind.RETURN_IF_NOT_NULL, "blockPlace", true, 0, 1));
+        hooks.add(new Hook("net.minecraft.server.level.ServerPlayer", "die",
+            "(Lnet/minecraft/world/damagesource/DamageSource;)V", Kind.ENTRY, "beginDeath", true, 0));
+        hooks.add(new Hook("net.minecraft.server.level.ServerPlayer", "die",
+            "(Lnet/minecraft/world/damagesource/DamageSource;)V", Kind.BEFORE_RETURN, "endDeath", true));
+        hooks.add(new Hook("net.minecraft.server.MinecraftServer", "tickServer",
+            "(Ljava/util/function/BooleanSupplier;)V", Kind.ENTRY, "tick", true));
 
         for (Hook hook : hooks) {
             hook.runtimeOwner = mappings.internalName(hook.owner);
@@ -178,6 +189,19 @@ final class ServerTransformer implements ClassFileTransformer {
                 list.add(new FrameNode(Opcodes.F_SAME1, 0, null, 1, new Object[] {"java/lang/Object"}));
                 list.add(new TypeInsnNode(Opcodes.CHECKCAST, Type.getArgumentTypes(method.desc)[0].getInternalName()));
                 list.add(new VarInsnNode(Opcodes.ASTORE, 1));
+                method.instructions.insert(list);
+                break;
+            }
+            case RETURN_IF_NOT_NULL: {
+                InsnList list = call(hook, method, "Ljava/lang/Object;");
+                LabelNode proceed = new LabelNode();
+                list.add(new InsnNode(Opcodes.DUP));
+                list.add(new JumpInsnNode(Opcodes.IFNULL, proceed));
+                list.add(new TypeInsnNode(Opcodes.CHECKCAST, returnType.getInternalName()));
+                list.add(new InsnNode(Opcodes.ARETURN));
+                list.add(proceed);
+                list.add(new FrameNode(Opcodes.F_SAME1, 0, null, 1, new Object[] {"java/lang/Object"}));
+                list.add(new InsnNode(Opcodes.POP));
                 method.instructions.insert(list);
                 break;
             }

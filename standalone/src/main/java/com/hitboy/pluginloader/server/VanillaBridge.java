@@ -1,5 +1,6 @@
 package com.hitboy.pluginloader.server;
 
+import com.hitboy.pluginloader.api.PlayerHandle;
 import com.hitboy.pluginloader.api.ServerAccess;
 
 import java.lang.reflect.Field;
@@ -43,6 +44,78 @@ final class VanillaBridge implements ServerAccess {
         Object playerList = call(server, "net.minecraft.server.MinecraftServer", "getPlayerList", "");
         call(playerList, "net.minecraft.server.players.PlayerList", "broadcastSystemMessage",
             COMPONENT + ",boolean", literal(message), false);
+    }
+
+    @Override
+    public java.util.List<PlayerHandle> onlinePlayers() {
+        Object playerList = call(server, "net.minecraft.server.MinecraftServer", "getPlayerList", "");
+        java.util.List<PlayerHandle> players = new java.util.ArrayList<>();
+        for (Object player : (java.util.List<?>) call(playerList, "net.minecraft.server.players.PlayerList", "getPlayers", "")) {
+            players.add(new VanillaPlayer(this, player));
+        }
+        return players;
+    }
+
+    @Override
+    public PlayerHandle player(String name) {
+        for (PlayerHandle player : onlinePlayers()) if (player.name().equalsIgnoreCase(name)) return player;
+        return null;
+    }
+
+    @Override
+    public void runCommand(String command) {
+        Object commands = call(server, "net.minecraft.server.MinecraftServer", "getCommands", "");
+        Object source = call(server, "net.minecraft.server.MinecraftServer", "createCommandSourceStack", "");
+        call(commands, "net.minecraft.commands.Commands", "performPrefixedCommand",
+            "net.minecraft.commands.CommandSourceStack,java.lang.String", source, command);
+    }
+
+    /** True when the player is a server operator (in the op list). */
+    boolean isOp(Object player) {
+        try {
+            Object profile = gameProfile(player);
+            Class<?> nameAndId = runtimeClass("net.minecraft.server.players.NameAndId");
+            Object key = nameAndId.getConstructor(profile.getClass()).newInstance(profile);
+            Object playerList = call(server, "net.minecraft.server.MinecraftServer", "getPlayerList", "");
+            return (Boolean) call(playerList, "net.minecraft.server.players.PlayerList", "isOp", "net.minecraft.server.players.NameAndId", key);
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("Could not check operator status", failure);
+        }
+    }
+
+    Object connectionOf(Object player) {
+        return fieldOfType(player, "net.minecraft.server.network.ServerGamePacketListenerImpl");
+    }
+
+    Object contextPlayer(Object context) {
+        return call(context, "net.minecraft.world.item.context.UseOnContext", "getPlayer", "");
+    }
+
+    Object contextLevel(Object context) {
+        return call(context, "net.minecraft.world.item.context.UseOnContext", "getLevel", "");
+    }
+
+    Object contextPosition(Object context) {
+        return call(context, "net.minecraft.world.item.context.UseOnContext", "getClickedPos", "");
+    }
+
+    /** Block id of a block item, such as {@code minecraft:stone}. */
+    String blockOfItem(Object blockItem) {
+        String text = String.valueOf(call(blockItem, "net.minecraft.world.item.BlockItem", "getBlock", "")); // "Block{minecraft:stone}"
+        int open = text.indexOf('{');
+        int close = text.indexOf('}');
+        return open >= 0 && close > open ? text.substring(open + 1, close) : text;
+    }
+
+    /** {@code InteractionResult.FAIL}. */
+    Object failResult() {
+        try {
+            String owner = "net.minecraft.world.InteractionResult";
+            Field fail = runtimeClass(owner).getField(mappings.fieldName(owner, "FAIL"));
+            return fail.get(null);
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("Could not read InteractionResult.FAIL", failure);
+        }
     }
 
     Object literal(String text) {
@@ -183,20 +256,23 @@ final class VanillaBridge implements ServerAccess {
         }
     }
 
+    /** The player's authlib GameProfile. */
+    private Object gameProfile(Object player) throws ReflectiveOperationException {
+        for (Class<?> type = player.getClass(); type != null; type = type.getSuperclass()) {
+            for (Method method : type.getDeclaredMethods()) {
+                if (method.getParameterCount() == 0 && method.getReturnType().getName().equals("com.mojang.authlib.GameProfile")) {
+                    method.setAccessible(true);
+                    return method.invoke(player);
+                }
+            }
+        }
+        throw new IllegalStateException("No GameProfile on " + player.getClass().getName());
+    }
+
     /** Reads a value from the player's authlib GameProfile (a record on new versions, a class on old ones). */
     private Object profileValue(Object player, String recordAccessor, String getter) {
         try {
-            Object profile = null;
-            for (Class<?> type = player.getClass(); type != null && profile == null; type = type.getSuperclass()) {
-                for (Method method : type.getDeclaredMethods()) {
-                    if (method.getParameterCount() == 0 && method.getReturnType().getName().equals("com.mojang.authlib.GameProfile")) {
-                        method.setAccessible(true);
-                        profile = method.invoke(player);
-                        break;
-                    }
-                }
-            }
-            if (profile == null) throw new IllegalStateException("No GameProfile on " + player.getClass().getName());
+            Object profile = gameProfile(player);
             Method accessor;
             try {
                 accessor = profile.getClass().getMethod(recordAccessor);

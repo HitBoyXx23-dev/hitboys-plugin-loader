@@ -1,7 +1,10 @@
 package com.hitboy.pluginloader.server;
 
+import com.hitboy.pluginloader.api.CommandExecutor;
 import com.hitboy.pluginloader.api.CommandHandler;
 import com.hitboy.pluginloader.api.CommandRegistry;
+import com.hitboy.pluginloader.api.CommandSender;
+import com.hitboy.pluginloader.api.PlayerHandle;
 import com.hitboy.pluginloader.core.PluginManager;
 
 import java.lang.reflect.Method;
@@ -29,11 +32,11 @@ final class VanillaCommands implements CommandRegistry {
 
     private static final class Registered {
         final String name;
-        final CommandHandler handler;
+        final CommandExecutor executor;
 
-        Registered(String name, CommandHandler handler) {
+        Registered(String name, CommandExecutor executor) {
             this.name = name;
-            this.handler = handler;
+            this.executor = executor;
         }
     }
 
@@ -49,23 +52,28 @@ final class VanillaCommands implements CommandRegistry {
     }
 
     @Override
-    public synchronized void register(String name, String description, CommandHandler handler) {
-        Registered command = new Registered(name.toLowerCase(java.util.Locale.ROOT), handler);
+    public void register(String name, String description, CommandHandler handler) {
+        registerCommand(name, description, (sender, arguments) -> handler.execute(sender.name(), arguments));
+    }
+
+    @Override
+    public synchronized void registerCommand(String name, String description, CommandExecutor executor) {
+        Registered command = new Registered(name.toLowerCase(java.util.Locale.ROOT), executor);
         REGISTERED.add(command);
         if (latestCommands != null) addToTree(latestCommands, command);
     }
 
     void registerBuiltIn(PluginManager plugins) {
-        CommandHandler list = (sender, arguments) -> {
+        CommandExecutor list = (sender, arguments) -> {
             StringBuilder message = new StringBuilder("HitBoy plugins (" + plugins.loadedPlugins().size() + "):");
             for (PluginManager.LoadedPlugin plugin : plugins.loadedPlugins()) {
                 message.append(' ').append(plugin.descriptor().name()).append(" v").append(plugin.descriptor().version());
             }
-            LOGGER.info(message.toString());
+            sender.sendMessage(message.toString());
             return true;
         };
-        register("hitboyplugins", "Lists HitBoy plugins.", list);
-        register("hbp", "Lists HitBoy plugins.", list);
+        registerCommand("hitboyplugins", "Lists HitBoy plugins.", list);
+        registerCommand("hbp", "Lists HitBoy plugins.", list);
     }
 
     private void addToTree(Object commands, Registered command) {
@@ -120,7 +128,7 @@ final class VanillaCommands implements CommandRegistry {
         Object source = null;
         try {
             source = context.getClass().getMethod("getSource").invoke(context);
-            String sender = (String) bridge.call(source, SOURCE, "getTextName", "");
+            CommandSender sender = new Sender(source);
             String[] arguments = new String[0];
             try {
                 String raw = (String) context.getClass().getMethod("getArgument", String.class, Class.class)
@@ -129,13 +137,49 @@ final class VanillaCommands implements CommandRegistry {
             } catch (java.lang.reflect.InvocationTargetException noArguments) {
                 // the command was run without arguments
             }
-            if (command.handler.execute(sender, arguments)) return 1;
+            if (command.executor.execute(sender, arguments)) return 1;
             fail(source, "Incorrect usage of /" + command.name);
             return 0;
         } catch (Throwable failure) {
             LOGGER.log(Level.WARNING, "Error running /" + command.name, failure);
             if (source != null) fail(source, "An internal error occurred running /" + command.name);
             return 0;
+        }
+    }
+
+    /** A command source (player, console, command block) as a {@link CommandSender}. */
+    private final class Sender implements CommandSender {
+        private final Object source;
+
+        Sender(Object source) {
+            this.source = source;
+        }
+
+        @Override
+        public String name() {
+            return (String) bridge.call(source, SOURCE, "getTextName", "");
+        }
+
+        @Override
+        public void sendMessage(String message) {
+            bridge.call(source, SOURCE, "sendSystemMessage", "net.minecraft.network.chat.Component", bridge.literal(message));
+        }
+
+        @Override
+        public boolean isPlayer() {
+            return player() != null;
+        }
+
+        @Override
+        public boolean isOp() {
+            PlayerHandle player = player();
+            return player == null || player.isOp();
+        }
+
+        @Override
+        public PlayerHandle player() {
+            Object player = bridge.call(source, SOURCE, "getPlayer", "");
+            return player == null ? null : new VanillaPlayer(bridge, player);
         }
     }
 

@@ -23,6 +23,7 @@ import java.io.File;
 public final class HitBoysMixedPluginLoader extends JavaPlugin {
     private PluginEventBus eventBus;
     private PluginManager pluginManager;
+    private com.hitboy.pluginloader.core.TickScheduler scheduler;
 
     @Override
     public void onEnable() {
@@ -33,7 +34,16 @@ public final class HitBoysMixedPluginLoader extends JavaPlugin {
 
         File pluginsDir = new File(getDataFolder(), "plugins");
         File dataRoot = new File(getDataFolder(), "plugin_data");
-        pluginManager = new PluginManager(getLogger(), pluginsDir, dataRoot, eventBus, commandRegistry, Bukkit::broadcastMessage);
+        scheduler = new com.hitboy.pluginloader.core.TickScheduler(getLogger());
+        final com.hitboy.pluginloader.core.TickScheduler ticks = scheduler;
+        getServer().getScheduler().runTaskTimer(this, new Runnable() {
+            @Override
+            public void run() {
+                ticks.tick();
+            }
+        }, 1L, 1L);
+        pluginManager = new PluginManager(getLogger(), pluginsDir, dataRoot, eventBus, commandRegistry,
+            new com.hitboy.pluginloader.bridge.BukkitServerAccess(), scheduler);
         pluginManager.loadAll();
 
         getLogger().info("HitBoy's Mixed Plugin Loader is up -- " + pluginManager.loadedPlugins().size()

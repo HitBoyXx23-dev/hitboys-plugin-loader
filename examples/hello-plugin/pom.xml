@@ -6,7 +6,7 @@
 
     <groupId>com.hitboy.example</groupId>
     <artifactId>hello-plugin</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <packaging>jar</packaging>
     <name>HitBoy Hello Plugin (example)</name>
 
@@ -21,7 +21,7 @@
         <dependency>
             <groupId>com.hitboy</groupId>
             <artifactId>hitboys-plugin-api</artifactId>
-            <version>1.0.0</version>
+            <version>1.1.0</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>

@@ -67,6 +67,39 @@ public final class BukkitEventBridge implements Listener {
     }
 
     @EventHandler
+    public void onBlockPlace(org.bukkit.event.block.BlockPlaceEvent event) {
+        Player player = event.getPlayer();
+        com.hitboy.pluginloader.api.events.BlockPlaceEvent hitboyEvent =
+            new com.hitboy.pluginloader.api.events.BlockPlaceEvent(
+                player.getName(),
+                player.getUniqueId(),
+                event.getBlock().getWorld().getName(),
+                event.getBlock().getX(),
+                event.getBlock().getY(),
+                event.getBlock().getZ(),
+                event.getBlock().getType().name()
+            );
+        eventBus.publish(hitboyEvent);
+        if (hitboyEvent.isCancelled()) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    @SuppressWarnings("deprecation") // the String death message exists on every Bukkit version
+    public void onDeath(org.bukkit.event.entity.PlayerDeathEvent event) {
+        Player player = event.getEntity();
+        com.hitboy.pluginloader.api.events.PlayerDeathEvent hitboyEvent =
+            new com.hitboy.pluginloader.api.events.PlayerDeathEvent(
+                player.getName(),
+                player.getUniqueId(),
+                event.getDeathMessage()
+            );
+        eventBus.publish(hitboyEvent);
+        event.setDeathMessage(hitboyEvent.deathMessage());
+    }
+
+    @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
         com.hitboy.pluginloader.api.events.BlockBreakEvent hitboyEvent =

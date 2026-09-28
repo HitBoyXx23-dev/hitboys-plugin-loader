@@ -34,6 +34,7 @@ final class Mappings {
     private final String version;
     private final Map<String, String> classes = new HashMap<>();
     private final Map<String, String> methods = new HashMap<>();
+    private final Map<String, String> fields = new HashMap<>();
     private final boolean identity;
 
     private Mappings(String version, boolean identity) {
@@ -97,6 +98,14 @@ final class Mappings {
         return mapped;
     }
 
+    /** Runtime field name. */
+    String fieldName(String owner, String name) {
+        if (identity) return name;
+        String mapped = fields.get(owner + "#" + name);
+        if (mapped == null) throw new IllegalStateException("No mapping for field " + owner + "#" + name + " in Minecraft " + version);
+        return mapped;
+    }
+
     /** Runtime JVM descriptor for a descriptor written with Mojang class names. */
     String descriptor(String mojangDescriptor) {
         if (identity) return mojangDescriptor;
@@ -127,7 +136,13 @@ final class Mappings {
                     classes.put(currentClass, line.substring(arrow + 4, line.length() - 1));
                     continue;
                 }
-                if (currentClass == null || line.indexOf('(') < 0) continue;
+                if (currentClass == null) continue;
+                if (line.indexOf('(') < 0) {
+                    // "    type name -> x" (a field)
+                    String field = line.substring(0, arrow).trim();
+                    fields.put(currentClass + "#" + field.substring(field.lastIndexOf(' ') + 1), line.substring(arrow + 4).trim());
+                    continue;
+                }
                 // "    12:34:void name(a.B,int) -> x" or "    void name(a.B,int) -> x"
                 String signature = line.substring(0, arrow).trim();
                 signature = signature.substring(signature.lastIndexOf(':') + 1);

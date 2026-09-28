@@ -8,4 +8,10 @@ package com.hitboy.pluginloader.api;
 public interface CommandRegistry {
     /** Registers a new command available to players and the console. */
     void register(String name, String description, CommandHandler handler);
+
+    /**
+     * Registers a command whose executor gets the {@link CommandSender}, so it can reply to the sender,
+     * check whether it is a player or an operator, and reach the player.
+     */
+    void registerCommand(String name, String description, CommandExecutor executor);
 }
